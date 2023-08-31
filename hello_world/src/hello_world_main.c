@@ -12,6 +12,8 @@
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 
+const char* chipmodel2str(esp_chip_model_t m);
+
 void app_main(void)
 {
     printf("Hello world!\n");
@@ -20,8 +22,8 @@ void app_main(void)
     esp_chip_info_t chip_info;
     uint32_t flash_size;
     esp_chip_info(&chip_info);
-    printf("This is %s chip with %d CPU core(s), WiFi%s%s%s, ",
-           CONFIG_IDF_TARGET,
+    printf("This is a %s chip with %d CPU core(s), WiFi%s%s%s, ",
+           chipmodel2str(chip_info.model),
            chip_info.cores,
            (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
            (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "",
@@ -47,4 +49,25 @@ void app_main(void)
     printf("Restarting now.\n");
     fflush(stdout);
     esp_restart();
+}
+
+const char* chipmodel2str(esp_chip_model_t m)
+{
+    switch(m)
+    {
+        case CHIP_ESP32:
+            return "ESP32";
+        case CHIP_ESP32S2:
+            return "ESP32S2";
+        case CHIP_ESP32S3:
+            return "ESP32S3";
+        case CHIP_ESP32C3:
+            return "ESP32C3";
+        case CHIP_ESP32H2:
+            return "ESP32H2";
+        case CHIP_ESP32C2:
+            return "ESP32C2";
+        default:
+            return "unknown";
+    }
 }

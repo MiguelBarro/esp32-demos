@@ -1,2 +1,6 @@
 build/
 *.tags
+*/.gitignore
+*/.vscode/
+*/sdkconfig*
+!*sdkconfig.defaults

@@ -3,8 +3,12 @@
 cmake_minimum_required(VERSION 3.16)
 
 # generate the message proxy-stub
-find_package(protobuf REQUIRED)
-find_package(protobuf-c REQUIRED)
+# find_package must use CONFIGs because any instrospection will
+# trigger the language before the toolchain and spoil platformio build
+find_package(protobuf CONFIG REQUIRED)
+find_package(protobuf-c CONFIG REQUIRED)
+
+get_target_property(PROTOBUF_PROTOC_EXECUTABLE protobuf::protoc LOCATION)
 
 if(WIN32)
     get_target_property(PLUGIN_PATH_VARIABLE protobuf-c::protoc-gen-c LOCATION)
@@ -20,6 +24,8 @@ function(GENERATE_TEST_SOURCES PROTO_FILE)
     else(WIN32)
         set(PLUGIN_NAME protoc-gen-c)
     endif(WIN32)
+
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/proto")
 
     execute_process(
         COMMAND ${PROTOBUF_PROTOC_EXECUTABLE} --plugin=${PLUGIN_NAME} -I${CMAKE_SOURCE_DIR}/proto ${PROTO_FILE}

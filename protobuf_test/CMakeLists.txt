@@ -1,7 +1,6 @@
 # The following lines of boilerplate have to be in your project's
 # CMakeLists in this exact order for cmake to work correctly
-cmake_minimum_required(VERSION 3.24)
-cmake_policy(SET CMP0139 NEW)
+cmake_minimum_required(VERSION 3.16)
 
 set(IDF_TARGET "esp32" CACHE STRING "ESP chip selected as target")
 
@@ -20,12 +19,22 @@ find_package(protobuf REQUIRED)
 find_package(protobuf-c REQUIRED)
 
 # Include the toolchain file
-file(REAL_PATH "$ENV{IDF_PATH}/tools/cmake/toolchain-${IDF_TARGET}.cmake" ESP_TARGET_TOOLCHAIN)
+file(TO_CMAKE_PATH "$ENV{IDF_PATH}/tools/cmake/toolchain-${IDF_TARGET}.cmake" ESP_TARGET_TOOLCHAIN)
 
+#if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+#    set(CMAKE_TOOLCHAIN_FILE "${ESP_TARGET_TOOLCHAIN}")
+#elseif(NOT CMAKE_TOOLCHAIN_FILE PATH_EQUAL ESP_TARGET_TOOLCHAIN)
+#    message(WARNING "Provided toolchain file value ${CMAKE_TOOLCHAIN_FILE} is not the expected one for this target.")
+#endif()
+
+# Substitute by the above in CMake 3.24
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "${ESP_TARGET_TOOLCHAIN}")
-elseif(NOT CMAKE_TOOLCHAIN_FILE PATH_EQUAL ESP_TARGET_TOOLCHAIN)
-    message(WARNING "Provided toolchain file value ${CMAKE_TOOLCHAIN_FILE} is not the expected one for this target.")
+else()
+    file(TO_CMAKE_PATH "${CMAKE_TOOLCHAIN_FILE}" REAL_CMAKE_TOOLCHAIN_FILE)
+    if(NOT REAL_CMAKE_TOOLCHAIN_FILE STREQUAL ESP_TARGET_TOOLCHAIN)
+        message(WARNING "Provided toolchain file value ${CMAKE_TOOLCHAIN_FILE} is not the expected one for this target.")
+    endif()
 endif()
 
 include(${CMAKE_TOOLCHAIN_FILE})
@@ -50,12 +59,6 @@ idf_build_process(${IDF_TARGET}
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(WIN32)
-    get_target_property(PLUGIN_PATH_VARIABLE protobuf-c::protoc-gen-c LOCATION)
-    get_filename_component(PLUGIN_PATH_VARIABLE "${PLUGIN_PATH_VARIABLE}" PATH)
-    set(ENV{PATH} "$ENV{PATH};${PLUGIN_PATH_VARIABLE}")
-endif(WIN32)
-
 # GENERATE_TEST_SOURCES() function
 # calls protoc with the protobuf-c plugin
 # receives as argument:
@@ -74,7 +77,7 @@ function(GENERATE_TEST_SOURCES SRC HDR PROTO_FILE)
 
     add_custom_target(${PROTO_FILE}
         COMMAND ${CMAKE_COMMAND}
-                -E env PATH="${OS_PATH_VARIABLE}\\;$<TARGET_FILE_DIR:protobuf-c::protoc-gen-c>"
+                -E env PATH="$<TARGET_FILE_DIR:protobuf-c::protoc-gen-c>\\;${OS_PATH_VARIABLE}"
                 ${PROTOBUF_PROTOC_EXECUTABLE}
                 --plugin=$<TARGET_FILE_NAME:protobuf-c::protoc-gen-c> -I${CMAKE_SOURCE_DIR}/proto ${PROTO_FILE}
                 --c_out=${CMAKE_CURRENT_BINARY_DIR}/proto

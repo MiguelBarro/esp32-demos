@@ -2,7 +2,7 @@ menu "Example MQTT Configuration"
 
     config BROKER_URL
         string "MQTT Broker URL"
-        default "mqtt://DESKTOP_BARRO:1883"
+        default "mqtt://DESKTOP-BARRO:1883"
         help
             URL of the broker to connect to (mqtt/mqtt.org/wiki/URI-Scheme)
 

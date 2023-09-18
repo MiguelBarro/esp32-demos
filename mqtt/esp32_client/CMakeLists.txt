@@ -6,3 +6,5 @@ set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/src")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(mqtt_pub)
+
+idf_build_set_property(CXX_COMPILE_OPTIONS "-Wno-missing-field-initializers" APPEND)

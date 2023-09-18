@@ -58,9 +58,7 @@ endif(WIN32)
 # calls protoc with the protobuf-c plugin
 # receives as argument:
 #  + the .proto filename that must be in the proto dir
-#  + source generated file
-#  + header generated file
-function(GENERATE_TEST_SOURCES SRC HDR PROTO_FILE)
+function(GENERATE_TEST_SOURCES PROTO_FILE)
 
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/proto")
 
@@ -70,29 +68,32 @@ function(GENERATE_TEST_SOURCES SRC HDR PROTO_FILE)
             set(OS_PATH_VARIABLE "${OS_PATH_VARIABLE}\\;${itvar}" )
     endforeach( itvar )
 
-    add_custom_target(${PROTO_FILE}
+    get_filename_component(PROTO_FILE_NAME "${PROTO_FILE}" NAME_WLE)
+
+    add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/proto/${PROTO_FILE_NAME}.pb-c.c"
         COMMAND ${CMAKE_COMMAND}
-                -E env PATH="${OS_PATH_VARIABLE}\\;$<TARGET_FILE_DIR:protobuf-c::protoc-gen-c>"
+        ARGS    -E env PATH="${OS_PATH_VARIABLE}\\;$<TARGET_FILE_DIR:protobuf-c::protoc-gen-c>"
                 $<TARGET_FILE:protobuf::protoc>
                 --plugin=$<TARGET_FILE_NAME:protobuf-c::protoc-gen-c> -I${CMAKE_SOURCE_DIR}/proto ${PROTO_FILE}
                 --c_out=${CMAKE_CURRENT_BINARY_DIR}/proto
         COMMENT Running protoc on ${PROTO_FILE}
-        BYPRODUCTS ${SRC} ${HDR}
+        DEPENDS ${PROTO_FILE} protobuf::protoc
     )
 
 endfunction()
 
-GENERATE_TEST_SOURCES(
-    proto/gps.pb-c.c
-    proto/gps.pb-c.h
-    gps.proto
-)
+file(GLOB PROTO_SOURCES "${CMAKE_CURRENT_LIST_DIR}/proto/*")
+foreach(FILE IN LISTS PROTO_SOURCES)
+    GENERATE_TEST_SOURCES(${FILE})
+    get_filename_component(PROTO_FILE_NAME "${FILE}" NAME_WLE)
+    list(APPEND PROTO_GENERATED "${CMAKE_CURRENT_BINARY_DIR}/proto/${PROTO_FILE_NAME}.pb-c.c")
+endforeach()
 
 add_executable(${CMAKE_PROJECT_NAME}.elf
     "src/protobuf_example_main.cpp"
-    "${CMAKE_CURRENT_BINARY_DIR}/proto/gps.pb-c.c"
+    ${PROTO_GENERATED}
 )
-add_dependencies(${CMAKE_PROJECT_NAME}.elf gps.proto)
+
 target_include_directories(${CMAKE_PROJECT_NAME}.elf PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/proto)
 target_link_libraries(${CMAKE_PROJECT_NAME}.elf idf::freertos idf::spi_flash idf::protobuf-c)
 

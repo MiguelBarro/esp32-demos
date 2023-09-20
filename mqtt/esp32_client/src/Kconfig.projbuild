@@ -1,9 +1,14 @@
 menu "Example MQTT Configuration"
 
-    config BROKER_URL
-        string "MQTT Broker URL"
-        default "mqtt://DESKTOP-BARRO:1883"
+    config BROKER_HOSTNAME
+        string "MQTT Broker Hostname"
+        default "DESKTOP-BARRO"
         help
-            URL of the broker to connect to (mqtt/mqtt.org/wiki/URI-Scheme)
+            Hostname of the broker to connect to
 
+    config BROKER_PORT
+        int "MQTT Broker Port"
+        default 1883
+        help
+            Set the port user for the broker to connect to
 endmenu

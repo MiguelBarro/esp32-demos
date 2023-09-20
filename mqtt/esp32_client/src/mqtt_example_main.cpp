@@ -7,9 +7,14 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 #include <stdio.h>
-#include <string.h>
+#include <string>
+
+// BEWARE: This influences all component headers
+#include "sdkconfig.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
 #include "esp_err.h"
 #include "esp_eth.h"
 #include "esp_event.h"
@@ -17,18 +22,24 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_system.h"
+
 #include "nvs_flash.h"
+
+#include "lwip/netdb.h"
+
+// External dependency
+#include "mdns.h"
 
 #include "ethernet_init.h"
 #include "mqtt_client.h"
 
-#include "sdkconfig.h"
-
 static const char *ETH_TAG = "eth_log";
+static const char *MDNS_TAG = "mDNS_log";
 static const char *TAG = "MQTT_EXAMPLE";
 
 // MQTT client handle
 static esp_mqtt_client_handle_t mqtt_client = nullptr;
+static bool mqtt_connected = false;
 
 static void log_error_if_nonzero(const char *message, int error_code)
 {
@@ -51,18 +62,17 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 {
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)event_data;
-    esp_mqtt_client_handle_t client = event->client;
-    int msg_id;
+
     switch ((esp_mqtt_event_id_t)event_id) {
 
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_publish(client, "sensors/temperature", "32", 0, 1, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        mqtt_connected = true;
         break;
 
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+        mqtt_connected = false;
         break;
 
     case MQTT_EVENT_PUBLISHED:
@@ -86,14 +96,46 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+void start_mdns_service()
+{
+    //initialize mDNS service
+    esp_err_t err = mdns_init();
+    if (err)
+    {
+        ESP_LOGI(MDNS_TAG, "MDNS Init failed: %d\n", err);
+        return;
+    }
+
+    //set hostname
+    mdns_hostname_set("esp32-mqtt-test");
+}
+
+const char* resolveHostAndLog(const char* host_name);
+const char* resolve_mdns_host(const char * host_name);
+
 static void mqtt_app_start(void)
 {
+    const char* address = nullptr;
+
+    // try actual network framework
+    address = resolveHostAndLog(CONFIG_BROKER_HOSTNAME);
+    if ( nullptr == address )
+    {
+        // Because internal mDNS is broken and cannot listen multicast fallback to the external one
+        address = resolve_mdns_host(CONFIG_BROKER_HOSTNAME);
+
+        if ( nullptr == address )
+            address = CONFIG_BROKER_HOSTNAME; // fallback to mqtt
+    }
+
     if ( nullptr == mqtt_client)
     {
         esp_mqtt_client_config_t mqtt_cfg = {
             .broker {
                 .address {
-                    .uri = CONFIG_BROKER_URL
+                    .hostname = address,
+                    .transport = MQTT_TRANSPORT_OVER_TCP,
+                    .port = CONFIG_BROKER_PORT
                 },
             },
         };
@@ -112,6 +154,121 @@ static void mqtt_app_start(void)
     }
 }
 
+void eth_check_and_set_dns(const char* new_dns)
+{
+    // count the interfaces
+
+    ESP_LOGI(ETH_TAG, "Number of interfaces: %d", esp_netif_get_nr_of_ifs());
+
+    esp_netif_t * interface = esp_netif_next(nullptr);
+    if (interface)
+    {
+        esp_netif_dns_info_t dns_info{};
+        esp_err_t error =  esp_netif_get_dns_info(interface, ESP_NETIF_DNS_MAIN, &dns_info);
+        if ( ESP_OK == error )
+        {
+            ESP_LOGI(ETH_TAG, "DNS:" IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+
+            if(!dns_info.ip.u_addr.ip4.addr && new_dns) // 0.0.0.0 is undefined
+            {
+                // Specify DNS
+                dns_info.ip.type = 0; // ipv4
+                dns_info.ip.u_addr.ip4.addr = esp_ip4addr_aton(new_dns);
+
+                if(dns_info.ip.u_addr.ip4.addr) // 0.0.0.0 is undefined
+                {
+                    if( ESP_OK != esp_netif_set_dns_info(interface, ESP_NETIF_DNS_MAIN, &dns_info) )
+                    {
+                        ESP_LOGI(ETH_TAG, "Fail to set the dns:" IPSTR, IP2STR(&dns_info.ip.u_addr.ip4));
+                    }
+
+                    ESP_LOGI(ETH_TAG, "DNS server set to %s", new_dns);
+                }
+                else
+                {
+                    ESP_LOGI(ETH_TAG, "Try to set invalid dns: %s", new_dns);
+                }
+            }
+        }
+        else
+        {
+            ESP_LOGI(ETH_TAG, "esp_netif_get_dns_info failed with %d", error);
+        }
+    }
+    else
+    {
+        ESP_LOGI(ETH_TAG, "No ethernet interface available");
+    }
+}
+
+const char* resolve_mdns_host(const char * host_name)
+{
+    ESP_LOGI(MDNS_TAG, "Query A: %s.local", host_name);
+
+    esp_ip4_addr_t addr{};
+
+    esp_err_t err = mdns_query_a(host_name, 2000,  &addr);
+    if(err){
+        if(err == ESP_ERR_NOT_FOUND){
+            ESP_LOGI(MDNS_TAG, "Host was not found!");
+            return nullptr;
+        }
+        ESP_LOGI(MDNS_TAG,"Query Failed");
+        return nullptr;
+    }
+
+    ESP_LOGI(MDNS_TAG,"Hostname: %s resolved via mDNS to " IPSTR, host_name, IP2STR(&addr));
+    return inet_ntoa(addr);
+}
+
+const char* resolveHostAndLog(const char* host_name)
+{
+    hostent* remoteHost;
+    ESP_LOGI(TAG, "Calling gethostbyname with %s", host_name);
+    remoteHost = lwip_gethostbyname(host_name);
+
+    if (nullptr == remoteHost) {
+        ESP_LOGI(TAG, "gethostbyname call failed");
+        return nullptr;
+    }
+
+    ESP_LOGI(TAG, "Function returned:");
+    ESP_LOGI(TAG, "\tOfficial name: %s", remoteHost->h_name);
+
+    int i = 0;
+    for (auto pAlias = remoteHost->h_aliases; *pAlias != 0; pAlias++) {
+        ESP_LOGI(TAG,"\tAlternate name #%d: %s", ++i, *pAlias);
+    }
+    ESP_LOGI(TAG,"\tAddress type: ");
+    switch (remoteHost->h_addrtype) {
+    case AF_INET:
+        ESP_LOGI(TAG,"AF_INET");
+        break;
+    default:
+        ESP_LOGI(TAG," %d", remoteHost->h_addrtype);
+        break;
+    }
+    ESP_LOGI(TAG,"\tAddress length: %d", remoteHost->h_length);
+
+    i = 0;
+    const char* address = nullptr;
+    if (remoteHost->h_addrtype == AF_INET)
+    {
+        while (remoteHost->h_addr_list[i] != 0) {
+            ip4_addr_t ip{};
+            ip.addr = *(u_long *) remoteHost->h_addr_list[i++];
+            const char* itaddress = inet_ntoa(ip);
+            ESP_LOGI(TAG,"\tIP Address #%d: %s", i, itaddress);
+            if (nullptr == address && nullptr != itaddress)
+            {   // keep the first valid one
+                address = itaddress;
+            }
+        }
+    }
+
+    return address;
+}
+
 /** Event handler for Ethernet events */
 static void eth_event_handler(void *arg, esp_event_base_t event_base,
                               int32_t event_id, void *event_data)
@@ -122,10 +279,12 @@ static void eth_event_handler(void *arg, esp_event_base_t event_base,
 
     switch (event_id) {
     case ETHERNET_EVENT_CONNECTED:
-        esp_eth_ioctl(eth_handle, ETH_CMD_G_MAC_ADDR, mac_addr);
-        ESP_LOGI(ETH_TAG, "Ethernet Link Up");
-        ESP_LOGI(ETH_TAG, "Ethernet HW Addr %02x:%02x:%02x:%02x:%02x:%02x",
-                 mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        {
+            esp_eth_ioctl(eth_handle, ETH_CMD_G_MAC_ADDR, mac_addr);
+            ESP_LOGI(ETH_TAG, "Ethernet Link Up");
+            ESP_LOGI(ETH_TAG, "Ethernet HW Addr %02x:%02x:%02x:%02x:%02x:%02x",
+                    mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+        }
         break;
     case ETHERNET_EVENT_DISCONNECTED:
         ESP_LOGI(ETH_TAG, "Ethernet Link Down");
@@ -167,6 +326,23 @@ static void got_ip_event_handler(void *arg, esp_event_base_t event_base,
     ESP_LOGI(ETH_TAG, "ETHMASK:" IPSTR, IP2STR(&ip_info->netmask));
     ESP_LOGI(ETH_TAG, "ETHGW:" IPSTR, IP2STR(&ip_info->gw));
     ESP_LOGI(ETH_TAG, "~~~~~~~~~~~");
+
+    // Show current DNS server
+    eth_check_and_set_dns(nullptr);
+
+    // Initialize mDNS
+    start_mdns_service();
+
+/*
+    // Testing resolution
+    resolve_mdns_host("DESKTOP-Barro");
+
+    // .local is case sensitive
+    resolveHostAndLog("DESKTOP-Barro.local");
+
+    resolveHostAndLog("localhost");
+    resolveHostAndLog("google.com");
+*/
 
     // Start MQTT client loop
     mqtt_app_start();
@@ -248,4 +424,26 @@ extern "C" void app_main(void)
 
     // Start Ethernet driver state machine
     ethernet_app_start();
+
+    // Loop publishing while connected
+    int counter = 0;
+    while(true)
+    {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        if (mqtt_client && mqtt_connected)
+        {
+            ESP_LOGI(TAG, "publishing data");
+            esp_mqtt_client_publish(mqtt_client, "esp32/publish", std::to_string(counter).c_str(), 0, 1, 0);
+        }
+        else if(mqtt_client)
+        {
+            ESP_LOGI(TAG, "Not connected yet: %d", counter);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Not client set up yet: %d", counter);
+        }
+
+        ++counter;
+    }
 }

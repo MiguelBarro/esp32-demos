@@ -15,26 +15,38 @@ This example demonstrates basic usage of `Ethernet driver` together with `esp_ne
 
 If you have a new Ethernet application to go (for example, connect to IoT cloud via Ethernet), try this as a basic template, then add your own code.
 
-## How to use example
-
-### Hardware Required
-
-To run this example, it's recommended that you have an official ESP32 Ethernet development board - [ESP32-Ethernet-Kit](https://docs.espressif.com/projects/esp-idf/en/latest/hw-reference/get-started-ethernet-kit.html). This example should also work for 3rd party ESP32 board as long as it's integrated with a supported Ethernet PHY chip. Up until now, ESP-IDF supports up to four Ethernet PHY: `LAN8720`, `IP101`, `DP83848` and `RTL8201`, additional PHY drivers should be implemented by users themselves.
-
-Besides that, `esp_eth` component can drive third-party Ethernet module which integrates MAC and PHY and provides common communication interface (e.g. SPI, USB, etc). This example will take the `DM9051`, `W5500` or `KSZ8851SNL` SPI modules as an example, illustrating how to install the Ethernet driver in the same manner.
-
-The ESP-IDF supports the usage of multiple Ethernet interfaces at a time when external modules are utilized which is also demonstrated by this example. There are several options you can combine:
-   * Internal EMAC and one SPI Ethernet module.
-   * Two SPI Ethernet modules of the same type connected to single SPI interface and accessed by switching appropriate CS.
-   * Internal EMAC and two SPI Ethernet modules of the same type.
-
-#### Pin Assignment
-
-See common pin assignments for Ethernet examples from [upper level](../README.md#common-pin-assignments).
-
-When using two Ethernet SPI modules at a time, they are to be connected to single SPI interface. Both modules then share data (MOSI/MISO) and CLK signals. However, the CS, interrupt and reset pins need to be connected to separate GPIO for each Ethernet SPI module.
-
 ### Configure the project
+
+According with the [board schematic](1) the ethernet PHY chip is a LAN8710A that:
+- expects [RMII](https://en.wikipedia.org/wiki/Media-independent_interface#RMII) use because its 9 pin (RMIISEL) is connected to VCC (+3.3V). 
+- in order to use RMII is necessary to synchronize the PHY chip and the micro. The EMAC clock must be exported through
+  the GPIO 17 which is the one connected to the PHY chip pin 5 (CLKIN). 
+- physical address is 0 because the PHY chip pins 13 (PHYAD0), 7 (PHYAD1) and 8 (PHYAD2) are grounded.
+- all PHY chip EMAC pins are connected to the ESP32, thus we must use the micro internal MAC.
+
+The above board requirements are translated into the following configs:
+- micro:
+```
+    CONFIG_ETH_USE_SPI_ETHERNET=n
+    CONFIG_ETH_ENABLED=y
+    CONFIG_ETH_USE_ESP32_EMAC=y
+    CONFIG_ETH_PHY_INTERFACE_RMII=y
+    CONFIG_ETH_RMII_CLK_OUTPUT=y
+    CONFIG_ETH_RMII_CLK_OUT_GPIO=17
+```
+- example:
+```
+    CONFIG_EXAMPLE_ETH_PHY_ADDR 0
+    CONFIG_EXAMPLE_ETH_PHY_RST_GPIO 5
+    CONFIG_EXAMPLE_ETH_MDC_GPIO 23
+    CONFIG_EXAMPLE_ETH_MDIO_GPIO 18
+    EMAC_CLK_OUT 2
+    EMAC_CLK_OUT_180_GPIO 17
+    CONFIG_EXAMPLE_ETH_PHY_LAN87XX 1
+    CONFIG_EXAMPLE_USE_INTERNAL_ETHERNET 1
+```
+
+All this can be setup doing:
 
 ```
 idf.py menuconfig

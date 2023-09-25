@@ -1,80 +1,202 @@
-| Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C6 | ESP32-H2 | ESP32-S2 | ESP32-S3 |
-| ----------------- | ----- | -------- | -------- | -------- | -------- | -------- | -------- |
+# MQTT esp32 client example
 
-# Ethernet Example
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+This example generates a basic ESP32 MQTT client for an Olymex Gateway Rev. G board. 
 
 ## Overview
 
-This example demonstrates basic usage of `Ethernet driver` together with `esp_netif`. Initialization of the `Ethernet driver` is wrapped in separate [sub-component](./components/ethernet_init/ethernet_init.c) of this project to clearly distinguish between the driver's and `esp_netif` initializations. The work flow of the example could be as follows:
-
-1. Install Ethernet driver
-2. Attach the driver to `esp_netif`
-3. Send DHCP requests and wait for a DHCP lease
-4. If get IP address successfully, then you will be able to ping the device
-
-If you have a new Ethernet application to go (for example, connect to IoT cloud via Ethernet), try this as a basic template, then add your own code.
+The example basically:
+ + sets up the ethernet driver using the specific board PHY settings.
+ + once the ethernet driver is assigned via DHCP an IP address it checks the DNS and starts an external mDNS service in
+   order to be able to resolve hostnames from the local network (we will se later the current lwIP framework cannot do
+   it by itself).
+ + the example tries to resolve the hostname address passed as an example option `BROKER_HOSTNAME` using mDNS. If it
+   fails then it passes the unresolved hostname to the MQTT client (this will relay it to lwIP for DNS name resolution).
+ + the example:
+    - publishes on topic `esp32/publish`
+    - subscribes on topic `esp32/subscribe`
 
 ## How to use example
 
-### Hardware Required
+Set up MQTT server and clients to test the ESP32 mqtt client. For a windows computer, for example, this involves:
+ + Downloading [mosquitto](https://github.com/eclipse/mosquitto) binaries from [here](https://mosquitto.org/files/binary/win64/mosquitto-2.0.17-install-windows-x64.exe). 
+ + Set up the firewall to allow inbound traffic from the ESP32. In this case we are using a special port (6338)
+   different from the usual 1883.
+```powershell
+    > $server = @{
+        DisplayName = "Mosquitto testing"
+        Direction = "Inbound"
+        Program = (ls -Path $env:ProgramFiles/mosquitto/* -R -Filter mosquitto.exe).fullname
+        Action = "Allow"
+        Enabled = "True"
+        Protocol = "TCP"
+        LocalPort = 6338
+    }
 
-To run this example, it's recommended that you have an official ESP32 Ethernet development board - [ESP32-Ethernet-Kit](https://docs.espressif.com/projects/esp-idf/en/latest/hw-reference/get-started-ethernet-kit.html). This example should also work for 3rd party ESP32 board as long as it's integrated with a supported Ethernet PHY chip. Up until now, ESP-IDF supports up to four Ethernet PHY: `LAN8720`, `IP101`, `DP83848` and `RTL8201`, additional PHY drivers should be implemented by users themselves.
+    > New-NetFirewallRule @server
+```
+   Note that windows firewall already is set up for *mDNS* traffic.
+ + Launch the *mosquitto server* using an ad hoc config file config to allow anonymous connections, test.conf:
+```
+    listener 6338 0.0.0.0
+    log_dest stderr
+    allow_anonymous true
+```
+   from cli that is:
+```powershell
+    > mosquitto -c $Env:TMP\test.conf -v
+```
+   launch a client publisher that maches the `esp32/subscribe` topic.
+```powershell
+    > mosquitto_pub -h localhost -p 6338 -t esp32/subscribe -m "hello world!" -q 1 --repeat 100 --repeat-delay 1
+```
+   launch a client subscriber that maches the `esp32/publisher` topic.
+```powershell
+    > mosquitto_sub -h localhost -p 6338 -t esp32/publish -q 1
+```
 
-Besides that, `esp_eth` component can drive third-party Ethernet module which integrates MAC and PHY and provides common communication interface (e.g. SPI, USB, etc). This example will take the `DM9051`, `W5500` or `KSZ8851SNL` SPI modules as an example, illustrating how to install the Ethernet driver in the same manner.
-
-The ESP-IDF supports the usage of multiple Ethernet interfaces at a time when external modules are utilized which is also demonstrated by this example. There are several options you can combine:
-   * Internal EMAC and one SPI Ethernet module.
-   * Two SPI Ethernet modules of the same type connected to single SPI interface and accessed by switching appropriate CS.
-   * Internal EMAC and two SPI Ethernet modules of the same type.
-
-#### Pin Assignment
-
-See common pin assignments for Ethernet examples from [upper level](../README.md#common-pin-assignments).
-
-When using two Ethernet SPI modules at a time, they are to be connected to single SPI interface. Both modules then share data (MOSI/MISO) and CLK signals. However, the CS, interrupt and reset pins need to be connected to separate GPIO for each Ethernet SPI module.
+ + Connect the *Olimex board* ethernet's socket. And reset it. After a few seconds (DHCP assigns address and the board
+   resolves the server hostname) both the *mosquitto server* and *mosquito_sub* should start showing esp32 activity.
+   Launch the monitor in order to check if the ESP32 is able to receive the publisher topic (use ESP-IDF terminal):
+    ```powershell
+        > $ENV:ESPPORT = "COM3" # Olimex board assigned port 
+        > cmake --build <project binary build dir> --target monitor
+    ```
+    or resorting to the idf framework directly:
+    ```powershell
+        > $ENV:ESPPORT = "COM3" # Olimex board assigned port 
+        project binary source dir> idf.py monitor -p COM3
+    ```
 
 ### Configure the project
 
+From an ESP-IDF environment, either:
+``` powershell
+> cmake --build <project binary build dir> --target menuconfig
 ```
-idf.py menuconfig
+or
+``` powershell
+project binary source dir> idf.py menuconfig
 ```
-
-See common configurations for Ethernet examples from [upper level](../README.md#common-configurations).
+The ethernet options are set up like in the [ethernet basic example](../../ethernet_basic/README.md#Configure-the-project).
+The example options are:
+ + *CONFIG_BROKER_HOSTNAME* which in my case is my workstation hostname.
+ + *CONFIG_BROKER_PORT* which according with the firewall rule is 6338.
 
 ### Build, Flash, and Run
 
-Build the project and flash it to the board, then run monitor tool to view serial output:
-
+Build the project and flash it to the board, then run monitor tool to view serial output.
+From an ESP-IDF environment, either:
+``` powershell
+> cmake --build <project binary build dir> --target flash
+> $ENV:ESPPORT = "COM3" # Olimex board assigned port 
+> cmake --build <project binary build dir> --target monitor
 ```
-idf.py -p PORT build flash monitor
+or
+``` powershell
+<project source dir> idf.py -p COM3 -B <project binary build dir> build flash monitor
 ```
 
-(Replace PORT with the name of the serial port to use.)
+### Hostname resolution issues
 
-(To exit the serial monitor, type ``Ctrl-]``.)
+Hostname resolution is usually given for granted if all the computers in the local network run the same OS but it can be
+troublesome otherwise as explained [here](https://www.eiman.tv/blog/posts/lannames/). ESP32 doesn't even run an
+operative system ... let's explained the issue:
++ socket libraries like [Berkeley sockets](https://en.wikipedia.org/wiki/Berkeley_sockets) or
+[winsocks](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-start-page-2) are supposed to resolve
+both DNS names and host names. But only the DNS resolution is standarized. Been non-standard host name resolution
+between different OS is an issue. <br>
+My educated guess is that corporate networks doesn't suffer from this because all computers have an actual DNS name
+avoiding the host name resolution completely. This is the case for example of Microsoft Domains where Active Directory's
+DNS Server will resolve any computer on the network. <br>
++ DNS fallbacks are OS dependent:
+    - On windows is explained in [TCP/IP Fundamentals for Microsoft Windows](https://download.microsoft.com/download/9/4/6/946958ef-7b86-4ddc-bfdb-c7ed2af4ce51/TCPIP_Fund.pdf) 
+    on Chapter 7 (Host Name Resolution).
+    On Chapter 9 (Windows Support for DNS) we discover that only domain joined computers can actually be reach using DNS.  
+    If DNS is not available windows fallsback into [NetBIOS](https://timothydevans.me.uk/nbf2cifs/nbf-addressing.html)
+    (old timer already deprecated) and [LLMNR](https://learn.microsoft.com/en-us/previous-versions//bb878128(v=technet.10)?redirectedfrom=MSDN)
+    which uses multicast to query DNS-style the other computers.
+    LLMNR (Local Link Multicast Name Resolution) is deprecated too due to security issues (query answers come back as
+    unicast been vulnerable to spoofing). 
+    LLMNR makes our non-domained joined windows computers talk to each other (we can check that doing:
 
-See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html) for full steps to configure and use ESP-IDF to build projects.
+        ```pwsh
+        > Resolve-DNSName -Name DESKTOP-whatever -LlmnrFallback
+        ```
+
+        which works and:
+
+        ```pwsh
+        > Resolve-DNSName -Name DESKTOP-whatever -DnsOnly
+        ```
+
+        which doesn't).
+
++ On MacOs they ignored the security flawed LLMNR and develop their own protocol [mDNS](http://www.multicastdns.org/).
++ On linux most distros embraced mDNS.
+
+The happy ending is that Windows 11 has already builtin support for mDNS, thus, all popular OS can interoperate with the
+ESP32 flawlessly ... or not? According with [espressif docs](https://docs.espressif.com/projects/esp-idf/en/release-v5.1/esp32/api-guides/lwip.html)
+and I quote:
+
+> * **mDNS** uses a different implementation to the lwIP default **mDNS**
+> (see [mDNS Service](https://docs.espressif.com/projects/esp-idf/en/release-v5.1/esp32/api-reference/protocols/mdns.html)), but
+> lwIP can look up **mDNS** hosts using standard APIs such as `gethostbyname()` and the convention `hostname.local`, provided the
+> [CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES](https://docs.espressif.com/projects/esp-idf/en/release-v5.1/esp32/api-reference/kconfig.html#config-lwip-dns-support-mdns-queries)
+> setting is enabled.
+
+That's not true.
++ The [mDNS Service](https://github.com/espressif/esp-protocols/tree/master/components/mdns) implementation works. In
+fact, is the one used in this example for hostname resolution.
++ The builtin lwIP implementation doesn't. And the explanation is easy, that implementation doesn't listen in the mDNS
+multicast port. In the [actual
+implementation](https://github.com/espressif/esp-lwip/blob/7896c6cad020d17a986f7e850f603e084e319328/src/core/dns.c)
+there are not actual `igmp_joingroup_netif()` calls (unlike in the mDNS Service one). Thus, resolution is not possible.
+
+This example uses the *mDNS Service* as component in order to workaround host name resolution.
 
 ## Example Output
 
-```bash
-I (394) eth_example: Ethernet Started
-I (3934) eth_example: Ethernet Link Up
-I (3934) eth_example: Ethernet HW Addr 30:ae:a4:c6:87:5b
-I (5864) esp_netif_handlers: eth ip: 192.168.2.151, mask: 255.255.255.0, gw: 192.168.2.2
-I (5864) eth_example: Ethernet Got IP Address
-I (5864) eth_example: ~~~~~~~~~~~
-I (5864) eth_example: ETHIP:192.168.2.151
-I (5874) eth_example: ETHMASK:255.255.255.0
-I (5874) eth_example: ETHGW:192.168.2.2
-I (5884) eth_example: ~~~~~~~~~~~
++ mosquitto server:
+```
+...
+1695634578: Received PUBACK from auto-6C19F6A4-179C-B868-9207-88753FA91D4C (Mid: 4383, RC:0)
+1695634579: Received PUBLISH from auto-8D573B54-A8FC-D7B8-040D-FFABA28E2457 (d0, q1, r0, m3043, 'esp32/subscribe', ... (12 bytes))
+1695634579: Sending PUBLISH to ESP32_665E1C (d0, q0, r0, m0, 'esp32/subscribe', ... (12 bytes))
+1695634579: Sending PUBACK to auto-8D573B54-A8FC-D7B8-040D-FFABA28E2457 (m3043, rc0)
+...
+```
++ mosquitto sub:
+```
+6
+7
+8
+9
+10
+11
+12
+```
++ ESP32 monitor:
+```
+I (4346128) MQTT_EXAMPLE: publishing data
+I (4346128) MQTT_EXAMPLE: MQTT_EVENT_PUBLISHED, msg_id=3495
+I (4347128) MQTT_EXAMPLE: publishing data
+I (4347128) MQTT_EXAMPLE: MQTT_EVENT_PUBLISHED, msg_id=28923
+I (4347328) MQTT_EXAMPLE: MQTT_EVENT_DATA
+TOPIC=esp32/subscribe
+DATA=hello world!
 ```
 
-Now you can ping your ESP32 in the terminal by entering `ping 192.168.2.151` (it depends on the actual IP address you get).
+Now it should be possible to resolve the actual ESP32 name as set up in the example through the mDNS service in the
+call:
+```cpp
+    // set hostname
+    mdns_hostname_set("esp32-mqtt-test");
+```
+by doing:
+```powershell
+> Resolve-Host esp32-mqtt-test
 
-## Troubleshooting
-
-See common troubleshooting for Ethernet examples from [upper level](../README.md#common-troubleshooting).
-
-(For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you as soon as possible.)
+HostName              Aliases AddressList
+--------              ------- -----------
+esp32-mqtt-test.local {}      {192.168.0.26}
+```

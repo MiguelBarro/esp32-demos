@@ -12,10 +12,10 @@ find_package(Mosquitto MODULE REQUIRED)
 find_package(protobuf CONFIG REQUIRED)
 
 # generate protobuf proxies and stubs
-file(GLOB PROTO_SOURCES "${CMAKE_CURRENT_LIST_DIR}/proto/*.proto")
+file(GLOB PROTO_SOURCES ${CMAKE_CURRENT_LIST_DIR}/proto/*.proto)
 protobuf_generate(
-    PROTOS "${PROTO_SOURCES}"
-    PROTOC_OUT_DIR "${PROJECT_BINARY_DIR}/proto"
+    PROTOS ${PROTO_SOURCES}
+    PROTOC_OUT_DIR ${PROJECT_BINARY_DIR}
     OUT_VAR PROTO_PROXYSTUB
 )
 

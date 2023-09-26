@@ -1,8 +1,15 @@
 #include <cstring>
+#include <iostream>
 #include <ctime>
+#include <thread>
+
+#include <absl/log/log.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log_sink.h>
+#include <absl/log/globals.h>
+#include <absl/log/log_sink_registry.h>
 
 #include <mosquittopp.h>
-#include <absl/log/log.h>
 
 #include <gps.pb.h>
 
@@ -108,8 +115,31 @@ class mqtt_client :
     }
 };
 
+// Create an abseil sink to send info and warnings to STDOUT
+class StdOutLogSink final : public absl::LogSink {
+ public:
+  ~StdOutLogSink() override = default;
+
+  void Send(const absl::LogEntry& entry) override {
+    if (entry.log_severity() >= absl::StderrThreshold())
+      return;
+
+    if (!entry.stacktrace().empty()) {
+      std::cout << entry.stacktrace().data() << std::endl;
+    } else {
+      std::cout << entry.text_message_with_prefix_and_newline();
+    }
+  }
+} log_sink;
+
 int main(int argc, char* argv[])
 {
+    absl::InitializeLog();
+    // send infos and warnings to stdout
+    absl::AddLogSink(&log_sink);
+
+    LOG(INFO) << "Initialization works";
+
     //TODO: set up cli
     const char* host = "DESKTOP-BARRO";
     const int port = 6338;

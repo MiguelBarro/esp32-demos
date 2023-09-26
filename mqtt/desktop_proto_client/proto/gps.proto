@@ -1,0 +1,13 @@
+syntax = "proto3";
+package gps;
+
+message Coords {
+  uint64 device = 1; // MAC or whatever the ID of the device
+  sint32 latitudeX1e7 = 2; // latitude in ten millionths of a degree
+  sint32 longitudeX1e7 = 3; // longitude in ten millionths of a degree
+  sint32 altitudeMillimetres = 4; // altitude in millimetres; if the altitude is unknown INT_MIN will be returned.
+  int32 radiusMillimetres = 5; // radius of location in millimetres; if the radius is unknown -1 will be returned.
+  int32 speedMillimetresPerSecond = 6; // the speed (in millimetres per second); if the speed is unknown INT_MIN will be returned.
+  int32 svs = 7; // the number of space vehicles used in establishing the location.  If the number of space vehicles is unknown or irrelevant -1 will be returned.
+  int64 timeUtc = 8; // the UTC time at which the location fix was made; if this is not available -1 will be returned.
+}

@@ -186,9 +186,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             // Show the recovered contents
             ESP_LOGI(TAG, "Show new message contents:");
             ESP_LOGI(TAG, "Device: %lld", gps->device);
-            ESP_LOGI(TAG, "Latitute: %ld", gps->latitudex1e7);
-            ESP_LOGI(TAG, "Longitud: %ld", gps->longitudex1e7);
-            ESP_LOGI(TAG, "Altitute: %ld", gps->altitudemillimetres);
+            ESP_LOGI(TAG, "Latitude: %ld", gps->latitudex1e7);
+            ESP_LOGI(TAG, "Longitude: %ld", gps->longitudex1e7);
+            ESP_LOGI(TAG, "Altitude: %ld", gps->altitudemillimetres);
             ESP_LOGI(TAG, "Radius: %ld", gps->radiusmillimetres);
             ESP_LOGI(TAG, "Speed: %ld", gps->speedmillimetrespersecond);
             ESP_LOGI(TAG, "Satellites: %ld", gps->svs);
@@ -550,9 +550,9 @@ extern "C" void app_main(void)
 
             ESP_LOGI(TAG, "Show new message contents:");
             ESP_LOGI(TAG, "Device: %lld", msg.device);
-            ESP_LOGI(TAG, "Latitute: %ld", msg.latitudex1e7);
-            ESP_LOGI(TAG, "Longitud: %ld", msg.longitudex1e7);
-            ESP_LOGI(TAG, "Altitute: %ld", msg.altitudemillimetres);
+            ESP_LOGI(TAG, "Latitude: %ld", msg.latitudex1e7);
+            ESP_LOGI(TAG, "Longitude: %ld", msg.longitudex1e7);
+            ESP_LOGI(TAG, "Altitude: %ld", msg.altitudemillimetres);
             ESP_LOGI(TAG, "Radius: %ld", msg.radiusmillimetres);
             ESP_LOGI(TAG, "Speed: %ld", msg.speedmillimetrespersecond);
             ESP_LOGI(TAG, "Satellites: %ld", msg.svs);

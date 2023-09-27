@@ -2,13 +2,17 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <string>
 #include <thread>
 #include <vector>
 
-#include <absl/log/log.h>
-#include <absl/log/initialize.h>
-#include <absl/log/log_sink.h>
+#include <absl/flags/flag.h>
+#include <absl/flags/parse.h>
+#include <absl/flags/usage.h>
 #include <absl/log/globals.h>
+#include <absl/log/initialize.h>
+#include <absl/log/log.h>
+#include <absl/log/log_sink.h>
 #include <absl/log/log_sink_registry.h>
 
 #include <mosquittopp.h>
@@ -21,6 +25,10 @@ bool user_exit = false;
 // pub/sub according with esp32 client not this one
 static const char* subscriber_topic = "esp32/gps/subscribe";
 static const char* publisher_topic = "esp32/gps/publish";
+
+// command line flags
+ABSL_FLAG(std::string, host, "localhost", "hostname of the machine where mqtt server is running");
+ABSL_FLAG(int16_t, port, 1883, "TCP port where the mqtt server is listening");
 
 // Generate random gps data
 gps::Coords random_gps_data()
@@ -141,14 +149,22 @@ int main(int argc, char* argv[])
     // send infos and warnings to stdout
     absl::AddLogSink(&log_sink);
 
-    //TODO: set up cli
-    const char* host = "DESKTOP-BARRO";
-    const int port = 6338;
+    // help message
+    absl::SetProgramUsageMessage(
+    R"help(This is a desktop sized mqtt client using the gps topic, flags:
+        --host specify DNS/hostname/IP for the machine where the mqtt broker is running
+        --port specify the TCP port where the mqtt broker is listening)help"
+    );
+
+    // Parse command line
+    absl::ParseCommandLine(argc, argv);
 
     // Set up connection
     mqtt_client& client = mqtt_client::get_client();
 
-    switch (client.connect(host, port))
+    switch (client.connect(
+            absl::GetFlag(FLAGS_host).c_str(),
+            absl::GetFlag(FLAGS_port)))
     {
         case MOSQ_ERR_SUCCESS:
             break;

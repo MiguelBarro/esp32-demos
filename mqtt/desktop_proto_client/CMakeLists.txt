@@ -25,7 +25,7 @@ endif(MSVC)
 
 # build the project
 add_executable(${PROJECT_NAME} src/main.cpp ${PROTO_PROXYSTUB})
-target_link_libraries(${PROJECT_NAME} PRIVATE absl::log Mosquitto::LibCpp protobuf::libprotobuf)
+target_link_libraries(${PROJECT_NAME} PRIVATE absl::log absl::flags_parse Mosquitto::LibCpp protobuf::libprotobuf)
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_BINARY_DIR}/proto)
 target_compile_definitions(${PROJECT_NAME} PRIVATE ABSL_MIN_LOG_LEVEL=0)
 

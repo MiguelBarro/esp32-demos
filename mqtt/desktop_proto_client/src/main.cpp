@@ -1,6 +1,7 @@
+#include <chrono>
 #include <cstring>
-#include <iostream>
 #include <ctime>
+#include <iostream>
 #include <thread>
 
 #include <absl/log/log.h>
@@ -102,15 +103,16 @@ class mqtt_client :
             gps::Coords msg;
             msg.ParseFromArray(message->payload, message->payloadlen);
 
-            LOG(INFO) << "Show new message contents: " << std::endl
-                      << "Device: " << msg.device() << std::endl
-                      << "Latitude: " << msg.latitudex1e7() << std::endl
-                      << "Longitude: " << msg.longitudex1e7() << std::endl
-                      << "Altitude: " << msg.altitudemillimetres() << std::endl
-                      << "Radius: " << msg.radiusmillimetres() << std::endl
-                      << "Speed: " << msg.speedmillimetrespersecond() << std::endl
-                      << "Satellites: " << msg.svs() << std::endl
-                      << "Time: " << msg.timeutc();
+            LOG(INFO) << std::endl
+                      << "Show received message contents: " << std::endl
+                      << "\tDevice: " << msg.device() << std::endl
+                      << "\tLatitude: " << msg.latitudex1e7() << std::endl
+                      << "\tLongitude: " << msg.longitudex1e7() << std::endl
+                      << "\tAltitude: " << msg.altitudemillimetres() << std::endl
+                      << "\tRadius: " << msg.radiusmillimetres() << std::endl
+                      << "\tSpeed: " << msg.speedmillimetrespersecond() << std::endl
+                      << "\tSatellites: " << msg.svs() << std::endl
+                      << "\tTime: " << msg.timeutc();
         }
     }
 };
@@ -138,8 +140,6 @@ int main(int argc, char* argv[])
     // send infos and warnings to stdout
     absl::AddLogSink(&log_sink);
 
-    LOG(INFO) << "Initialization works";
-
     //TODO: set up cli
     const char* host = "DESKTOP-BARRO";
     const int port = 6338;
@@ -147,30 +147,45 @@ int main(int argc, char* argv[])
     // Set up connection
     mqtt_client& client = mqtt_client::get_client();
 
-    if (MOSQ_ERR_SUCCESS != client.connect(host, port, true))
+    switch (client.connect(host, port))
     {
-        LOG(ERROR) << "Cannot establish connection";
-        return -1;
+        case MOSQ_ERR_SUCCESS:
+            break;
+        case MOSQ_ERR_INVAL:
+            LOG(ERROR) << "The Network Connection has been made but MQTT service is unavailable";
+            return MOSQ_ERR_INVAL;
+        case MOSQ_ERR_ERRNO:
+            LOG(ERROR) << "OS error code: " << errno;
+            break;
+        default:
+            LOG(ERROR) << "Unknown return code for connection";
     }
+
+    // next publish time
+    auto np = std::chrono::steady_clock::now();
 
     while(!user_exit)
     {
         // keep looping and publishing each second
-        int res = client.loop_forever(1000);
+        int res = client.loop(0);
+        auto n = std::chrono::steady_clock::now();
 
-        if (MOSQ_ERR_SUCCESS == res)
+        if (MOSQ_ERR_SUCCESS == res && n > np)
         {
+            np = n + std::chrono::seconds(1);
+
             auto msg = random_gps_data();
 
-            LOG(INFO) << "Show new message contents: " << std::endl
-                      << "Device: " << msg.device() << std::endl
-                      << "Latitude: " << msg.latitudex1e7() << std::endl
-                      << "Longitude: " << msg.longitudex1e7() << std::endl
-                      << "Altitude: " << msg.altitudemillimetres() << std::endl
-                      << "Radius: " << msg.radiusmillimetres() << std::endl
-                      << "Speed: " << msg.speedmillimetrespersecond() << std::endl
-                      << "Satellites: " << msg.svs() << std::endl
-                      << "Time: " << msg.timeutc();
+            LOG(INFO) << std::endl
+                      << "Show new message contents: " << std::endl
+                      << "\tDevice: " << msg.device() << std::endl
+                      << "\tLatitude: " << msg.latitudex1e7() << std::endl
+                      << "\tLongitude: " << msg.longitudex1e7() << std::endl
+                      << "\tAltitude: " << msg.altitudemillimetres() << std::endl
+                      << "\tRadius: " << msg.radiusmillimetres() << std::endl
+                      << "\tSpeed: " << msg.speedmillimetrespersecond() << std::endl
+                      << "\tSatellites: " << msg.svs() << std::endl
+                      << "\tTime: " << msg.timeutc();
 
             auto str = msg.SerializeAsString();
             if (MOSQ_ERR_SUCCESS != client.publish(nullptr, subscriber_topic, str.length(), str.c_str()))

@@ -1,4 +1,5 @@
 #include <chrono>
+#include <csignal>
 #include <cstring>
 #include <ctime>
 #include <iostream>
@@ -18,9 +19,6 @@
 #include <mosquittopp.h>
 
 #include <gps.pb.h>
-
-// TODO: set up user Ctrl-C
-bool user_exit = false;
 
 // pub/sub according with esp32 client not this one
 static const char* subscriber_topic = "esp32/gps/subscribe";
@@ -126,6 +124,16 @@ class mqtt_client :
     }
 };
 
+// set up user Ctrl-C
+volatile sig_atomic_t user_exit = 0;
+
+void sigint_handler(int signum)
+{
+    user_exit = 1;
+    std::cout << "User requested shut down" << std::endl;
+    mqtt_client::get_client().disconnect();
+}
+
 // Create an abseil sink to send info and warnings to STDOUT
 class StdOutLogSink final : public absl::LogSink {
  public:
@@ -148,6 +156,10 @@ int main(int argc, char* argv[])
     absl::InitializeLog();
     // send infos and warnings to stdout
     absl::AddLogSink(&log_sink);
+
+    // signal handling
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigint_handler);
 
     // help message
     absl::SetProgramUsageMessage(

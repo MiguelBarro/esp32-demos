@@ -179,12 +179,12 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         }
 
         // Special treatment for gps data
-        if (!std::strcmp(event->topic, subscriber_topic))
+        if (!std::strncmp(event->topic, subscriber_topic, std::strlen(subscriber_topic)))
         {
             auto gps = deserialize_gps_data((const uint8_t*)event->data, event->data_len);
 
             // Show the recovered contents
-            ESP_LOGI(TAG, "Show new message contents:");
+            ESP_LOGI(TAG, "Show received message contents:");
             ESP_LOGI(TAG, "Device: %lld", gps->device);
             ESP_LOGI(TAG, "Latitude: %ld", gps->latitudex1e7);
             ESP_LOGI(TAG, "Longitude: %ld", gps->longitudex1e7);
@@ -198,7 +198,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         }
         else
         {
-            ESP_LOGI(TAG, "DATA=%.*s\r\n", event->data_len, event->data);
+            ESP_LOGI(TAG, "Unknown topic detected is %s", event->topic);
         }
 
         break;

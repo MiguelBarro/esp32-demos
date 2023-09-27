@@ -3,6 +3,7 @@
 #include <ctime>
 #include <iostream>
 #include <thread>
+#include <vector>
 
 #include <absl/log/log.h>
 #include <absl/log/initialize.h>
@@ -187,8 +188,12 @@ int main(int argc, char* argv[])
                       << "\tSatellites: " << msg.svs() << std::endl
                       << "\tTime: " << msg.timeutc();
 
-            auto str = msg.SerializeAsString();
-            if (MOSQ_ERR_SUCCESS != client.publish(nullptr, subscriber_topic, str.length(), str.c_str()))
+            // Serialize to array
+            std::vector<char> buf(msg.ByteSizeLong());
+            msg.SerializeToArray(buf.data(), buf.size());
+
+            // deliver
+            if (MOSQ_ERR_SUCCESS != client.publish(nullptr, subscriber_topic, buf.size(), buf.data()))
                 LOG(ERROR) << "Failed to publish";
         }
     }
